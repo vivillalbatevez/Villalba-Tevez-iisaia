@@ -1,0 +1,412 @@
+# Defining OpenAPI metadata and servers...
+openapi: 3.0.0
+info:
+  title: API para Control de Stock de un Kiosco
+  description: API RESTful robusta para la gestión multi-kiosco de productos, inventario y control de movimientos (ingresos, ventas y ajustes).
+  version: 1.0.0
+servers:
+  - url: https://api.kiosco.local/v1
+    description: Servidor de producción principal
+
+# Configuring hierarchical paths with mandatory response codes...
+paths:
+  /kioscos:
+    get:
+      summary: Listar todos los kioscos
+      description: Obtiene una lista completa de los kioscos registrados en la cadena.
+      responses:
+        '200':
+          description: Lista de kioscos obtenida exitosamente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Kiosco'
+        '500':
+          description: Error interno del servidor.
+    post:
+      summary: Crear un nuevo kiosco
+      description: Da de alta un nuevo local/kiosco en el sistema.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KioscoInput'
+      responses:
+        '201':
+          description: Kiosco creado exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Kiosco'
+        '400':
+          description: Datos de entrada inválidos o faltantes en el body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /kioscos/{kioscoId}/productos:
+    get:
+      summary: Listar productos de un kiosco
+      description: Obtiene todos los productos del inventario pertenecientes a un kiosco específico.
+      parameters:
+        - name: kioscoId
+          in: path
+          required: true
+          description: UUID del kiosco
+          schema:
+            type: string
+            format: uuid
+        - name: categoria
+          in: query
+          description: Filtrar productos por categoría específica
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de productos obtenida exitosamente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Producto'
+        '404':
+          description: Kiosco no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Crear un producto en un kiosco
+      description: Da de alta un nuevo producto dentro del inventario de un kiosco específico.
+      parameters:
+        - name: kioscoId
+          in: path
+          required: true
+          description: UUID del kiosco
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductoInput'
+      responses:
+        '201':
+          description: Producto creado exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Producto'
+        '400':
+          description: Datos de entrada inválidos o faltantes en el body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Kiosco no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /kioscos/{kioscoId}/productos/{productoId}:
+    get:
+      summary: Obtener producto por ID en un kiosco
+      description: Recupera los detalles de un producto específico dentro de un kiosco determinado.
+      parameters:
+        - name: kioscoId
+          in: path
+          required: true
+          description: UUID del kiosco
+          schema:
+            type: string
+            format: uuid
+        - name: productoId
+          in: path
+          required: true
+          description: UUID del producto
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Producto encontrado exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Producto'
+        '404':
+          description: Kiosco o producto no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Eliminar un producto de un kiosco
+      description: Da de baja un producto del inventario de un kiosco.
+      parameters:
+        - name: kioscoId
+          in: path
+          required: true
+          description: UUID del kiosco
+          schema:
+            type: string
+            format: uuid
+        - name: productoId
+          in: path
+          required: true
+          description: UUID del producto
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Producto eliminado exitosamente (sin contenido).
+        '404':
+          description: Kiosco o producto no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /kioscos/{kioscoId}/productos/{productoId}/movimientos:
+    get:
+      summary: Listar movimientos de stock de un producto
+      description: Obtiene el historial de transacciones e inventario de un producto en un kiosco específico.
+      parameters:
+        - name: kioscoId
+          in: path
+          required: true
+          description: UUID del kiosco
+          schema:
+            type: string
+            format: uuid
+        - name: productoId
+          in: path
+          required: true
+          description: UUID del producto
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Historial de movimientos obtenido con éxito.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MovimientoStock'
+        '404':
+          description: Kiosco o producto no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Registrar un movimiento de stock
+      description: Registra una operación de INGRESO, VENTA o AJUSTE que afecta automáticamente el stock actual del producto en el kiosco.
+      parameters:
+        - name: kioscoId
+          in: path
+          required: true
+          description: UUID del kiosco
+          schema:
+            type: string
+            format: uuid
+        - name: productoId
+          in: path
+          required: true
+          description: UUID del producto
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovimientoStockInput'
+      responses:
+        '201':
+          description: Movimiento registrado exitosamente y stock actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MovimientoStock'
+        '400':
+          description: Datos inválidos o faltantes en el body de la petición.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Kiosco o producto no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflicto por stock insuficiente. Ocurre si se intenta realizar una VENTA con una cantidad superior al stockActual disponible del producto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+# Defining components and data schemas...
+components:
+  schemas:
+    Kiosco:
+      type: object
+      required:
+        - id
+        - nombre
+        - direccion
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+        nombre:
+          type: string
+          example: "Kiosco Central"
+        direccion:
+          type: string
+          example: "Av. Corrientes 1234, CABA"
+
+    KioscoInput:
+      type: object
+      required:
+        - nombre
+        - direccion
+      properties:
+        nombre:
+          type: string
+          example: "Kiosco Central"
+        direccion:
+          type: string
+          example: "Av. Corrientes 1234, CABA"
+
+    Producto:
+      type: object
+      required:
+        - id
+        - nombre
+        - categoria
+        - precio
+        - stockActual
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        nombre:
+          type: string
+          example: "Alfajor Triple Chocolate"
+        categoria:
+          type: string
+          example: "Golosinas"
+        precio:
+          type: number
+          format: double
+          example: 1250.50
+        stockActual:
+          type: integer
+          format: int32
+          example: 48
+        fechaActualizacion:
+          type: string
+          format: date-time
+          example: "2026-06-06T14:30:00Z"
+
+    ProductoInput:
+      type: object
+      required:
+        - nombre
+        - categoria
+        - precio
+        - stockActual
+      properties:
+        nombre:
+          type: string
+          example: "Alfajor Triple Chocolate"
+        categoria:
+          type: string
+          example: "Golosinas"
+        precio:
+          type: number
+          format: double
+          example: 1250.50
+        stockActual:
+          type: integer
+          format: int32
+          example: 50
+
+    MovimientoStock:
+      type: object
+      required:
+        - id
+        - tipo
+        - cantidad
+        - fecha
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"
+        tipo:
+          type: string
+          enum: [INGRESO, VENTA, AJUSTE]
+          example: "VENTA"
+        cantidad:
+          type: integer
+          format: int32
+          example: 2
+        motivo:
+          type: string
+          example: "Venta directa en mostrador"
+        fecha:
+          type: string
+          format: date-time
+          example: "2026-06-06T15:45:10Z"
+
+    MovimientoStockInput:
+      type: object
+      required:
+        - tipo
+        - cantidad
+      properties:
+        tipo:
+          type: string
+          enum: [INGRESO, VENTA, AJUSTE]
+          example: "VENTA"
+        cantidad:
+          type: integer
+          format: int32
+          example: 10
+        motivo:
+          type: string
+          example: "Venta mayorista"
+
+    ErrorResponse:
+      type: object
+      required:
+        - codigo
+        - mensaje
+      properties:
+        codigo:
+          type: integer
+          format: int32
+          example: 409
+        mensaje:
+          type: string
+          example: "Stock insuficiente para procesar la venta solicitada."
