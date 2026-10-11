@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Modelador Espacial Rápido — Pitch (Copy)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%232B7CF6'/%3E%3Ccircle cx='50' cy='50' r='20' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root {
+    --sky-1: #EAF3FF;
+    --sky-2: #F7FBFF;
+    --blue-900: #0B2E59;
+    --blue-700: #1D5FBF;
+    --blue-600: #2B7CF6;
+    --blue-500: #4C9AFF;
+    --ink: #10233F;
+    --ink-soft: #4E6076;
+    --glass-bg: rgba(255, 255, 255, 0.55);
+    --glass-bg-strong: rgba(255, 255, 255, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.65);
+    --glass-shadow: 0 8px 32px rgba(30, 80, 160, 0.14);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  :root:not([data-theme="light"]) { color-scheme: light; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --sky-1: #EAF3FF; --sky-2: #F7FBFF; }
+  }
+  :root[data-theme="dark"] { --sky-1: #EAF3FF; --sky-2: #F7FBFF; }
+
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0;
+    min-height: 100%;
+    color: var(--ink);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background:
+      radial-gradient(1100px 600px at 15% -10%, #DCEBFF 0%, transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, #CFE3FF 0%, transparent 55%),
+      linear-gradient(180deg, var(--sky-2) 0%, var(--sky-1) 100%);
+    background-attachment: fixed;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.55);
+  }
+  .glass-strong {
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(26px) saturate(160%);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  .pill { background: rgba(255,255,255,0.55); border: 1px solid rgba(255,255,255,0.7); }
+
+  .btn-glass {
+    background: rgba(255,255,255,0.62);
+    border: 1px solid rgba(255,255,255,0.85);
+    color: var(--blue-700);
+    font-weight: 600;
+    font-size: 0.82rem;
+    padding: 0.5rem 0.95rem;
+    border-radius: 999px;
+    transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+  }
+  .btn-glass svg { flex-shrink: 0; }
+  .btn-glass:hover:not(:disabled) { background: rgba(255,255,255,0.9); }
+  .btn-glass:active:not(:disabled) { transform: scale(0.96); }
+  .btn-glass:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: var(--blue-600); color: white; border: 1px solid var(--blue-600); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35); }
+  .btn-primary:hover:not(:disabled) { background: var(--blue-700); }
+
+  canvas#room2d { touch-action: none; }
+  #three-container { touch-action: none; cursor: grab; }
+  #three-container.orbiting { cursor: grabbing; }
+
+  .panel-label { font-size: 0.72rem; letter-spacing: 0.02em; color: var(--blue-700); font-weight: 600; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; flex-shrink: 0; }
+
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 12px);
+    opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease; z-index: 50;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  #photo-input:focus-visible + label { outline: 2px solid var(--blue-600); outline-offset: 2px; }
+  #photo-preview { max-height: 9rem; border-radius: 0.75rem; border: 1px solid rgba(255,255,255,0.8); }
+  ::selection { background: var(--blue-500); color: white; }
+</style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Header -->
+  <header class="max-w-7xl mx-auto px-5 sm:px-8 pt-10 pb-6">
+    <div class="glass-strong rounded-[28px] px-6 py-7 sm:px-9 sm:py-9">
+      <p class="mono panel-label mb-3">MVP · PRESENTACIÓN</p>
+      <h1 class="text-3xl sm:text-[2.6rem] font-extrabold leading-[1.08] tracking-tight" style="color:var(--blue-900)">
+        Modelador Espacial Rápido
+      </h1>
+      <p class="mt-3 text-base sm:text-lg" style="color:var(--ink-soft)">
+        Del boceto en papel al espacio en 3D, sin fricción.
+      </p>
+      <div class="mt-6 flex flex-wrap gap-2">
+        <span class="pill rounded-full px-4 py-1.5 text-sm" style="color:var(--blue-900)">Victoria Villalba Tevez</span>
+        <span class="pill rounded-full px-4 py-1.5 text-sm" style="color:var(--blue-900)">Silvert Kevin Quispe Pacompia</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-5 sm:px-8 pb-14">
+    <div class="flex flex-col lg:flex-row gap-6 items-start">
+
+      <!-- Lateral: explicación del MVP -->
+      <aside class="w-full lg:w-72 shrink-0 space-y-4 lg:sticky lg:top-6">
+
+        <div class="glass rounded-3xl p-5">
+          <p class="panel-label mono mb-2">PROBLEMA</p>
+          <h2 class="font-semibold text-base mb-1.5" style="color:var(--blue-900)">El salto que nadie quiere dar</h2>
+          <p class="text-sm leading-relaxed" style="color:var(--ink-soft)">
+            Entre un boceto en papel y un software 3D complejo hay una fricción enorme:
+            la mayoría dibuja la idea a mano pero nunca la lleva a un modelo real.
+          </p>
+        </div>
+
+        <div class="glass rounded-3xl p-5">
+          <p class="panel-label mono mb-2">USUARIOS</p>
+          <h2 class="font-semibold text-base mb-1.5" style="color:var(--blue-900)">A quién le resuelve el problema</h2>
+          <ul class="text-sm leading-relaxed space-y-1.5">
+            <li class="flex items-start gap-2" style="color:var(--ink-soft)"><span class="legend-dot mt-1.5" style="background:var(--blue-600)"></span>Dueños de comercios, para layouts de local.</li>
+            <li class="flex items-start gap-2" style="color:var(--ink-soft)"><span class="legend-dot mt-1.5" style="background:var(--blue-600)"></span>Usuarios casuales, planeando una remodelación.</li>
+          </ul>
+        </div>
+
+        <div class="glass rounded-3xl p-5">
+          <p class="panel-label mono mb-2">STACK</p>
+          <h2 class="font-semibold text-base mb-2" style="color:var(--blue-900)">Cómo está construido</h2>
+          <dl class="text-sm space-y-1.5">
+            <div class="flex gap-2"><dt class="mono w-20 shrink-0" style="color:var(--blue-700)">Frontend</dt><dd style="color:var(--ink-soft)">Blueprint3D / Three.js</dd></div>
+            <div class="flex gap-2"><dt class="mono w-20 shrink-0" style="color:var(--blue-700)">Backend</dt><dd style="color:var(--ink-soft)">FastAPI</dd></div>
+            <div class="flex gap-2"><dt class="mono w-20 shrink-0" style="color:var(--blue-700)">Datos</dt><dd style="color:var(--ink-soft)">JSON</dd></div>
+          </dl>
+        </div>
+
+        <div class="glass rounded-3xl p-5">
+          <p class="panel-label mono mb-2">AGENTE</p>
+          <h2 class="font-semibold text-base mb-2" style="color:var(--blue-900)">Configuración del agente</h2>
+          <dl class="text-sm space-y-1.5">
+            <div class="flex gap-2"><dt class="mono w-20 shrink-0" style="color:var(--blue-700)">CLAUDE.md</dt><dd style="color:var(--ink-soft)">Convenciones</dd></div>
+            <div class="flex gap-2"><dt class="mono w-20 shrink-0" style="color:var(--blue-700)">rules</dt><dd style="color:var(--ink-soft)">Con scope</dd></div>
+            <div class="flex gap-2"><dt class="mono w-20 shrink-0" style="color:var(--blue-700)">skill</dt><dd style="color:var(--ink-soft)">superpowers</dd></div>
+          </dl>
+        </div>
+
+      </aside>
+
+      <!-- Contenido principal: demo interactiva -->
+      <div class="flex-1 min-w-0 w-full">
+
+        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2 px-1">
+          <h2 class="text-xl font-semibold" style="color:var(--blue-900)">La mecánica central, en vivo</h2>
+          <p id="furniture-count" class="mono panel-label">1 mueble</p>
+        </div>
+
+        <section id="photo-card" class="glass rounded-3xl p-4 mb-4" aria-labelledby="photo-title">
+          <p id="photo-title" class="mono panel-label mb-2">FOTO → PROPUESTA DE PLANO 2D</p>
+          <div class="flex flex-wrap items-center gap-3">
+            <img id="photo-preview" alt="Vista previa de la foto seleccionada" hidden>
+            <div class="flex flex-col gap-2 min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <input id="photo-input" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only">
+                <label id="photo-pick" for="photo-input" class="btn-glass cursor-pointer">Elegir foto</label>
+                <button id="photo-remove" class="btn-glass" disabled>Quitar</button>
+                <button id="photo-analyze" class="btn-glass btn-primary" disabled>Analizar foto</button>
+                <span id="photo-name" class="mono text-xs truncate" style="color:var(--ink-soft)">Sin imagen</span>
+              </div>
+              <label class="text-xs flex items-center gap-2" style="color:var(--ink-soft)">Ancho real del ambiente (m, opcional, para calibrar)
+                <input id="photo-width" type="text" inputmode="decimal" class="pill rounded-full px-3 py-1 w-20 text-sm" placeholder="ej. 4,5"></label>
+            </div>
+          </div>
+          <p id="photo-status" role="status" aria-live="polite" class="text-sm mt-3"></p>
+          <div id="photo-review" hidden class="mt-3 rounded-2xl p-3" style="background:rgba(255,255,255,0.6); border:1px solid rgba(201,121,26,0.5)">
+            <p class="text-sm font-semibold" style="color:#8A5210">Propuesta estimada, no es una medición exacta.</p>
+            <ul id="photo-warnings" class="text-xs list-disc pl-5 mt-1" style="color:var(--ink-soft)"></ul>
+            <div class="flex gap-2 mt-3">
+              <button id="photo-use" class="btn-glass btn-primary">Usar este plano</button>
+              <button id="photo-cancel" class="btn-glass">Cancelar</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="glass rounded-2xl p-3 mb-4 flex flex-wrap items-center gap-2">
+          <div class="relative inline-flex items-center">
+            <select id="furniture-type-select" class="btn-glass appearance-none pr-7 cursor-pointer" style="color:var(--blue-900)"></select>
+            <svg class="pointer-events-none absolute right-2.5" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="color:var(--blue-700)"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <button id="btn-add" class="btn-glass btn-primary inline-flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Agregar mueble
+          </button>
+          <button id="btn-rotate" class="btn-glass inline-flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.2-6.9"/><polyline points="21 3 21 9 15 9"/></svg>
+            Rotar 15°
+          </button>
+          <button id="btn-delete" class="btn-glass inline-flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Eliminar
+          </button>
+          <button id="btn-reset" class="btn-glass inline-flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            Reiniciar
+          </button>
+          <span class="flex-1"></span>
+          <button id="btn-save" class="btn-glass inline-flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 19h14"/></svg>
+            Guardar
+          </button>
+          <button id="btn-copy" class="btn-glass inline-flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            Copiar JSON
+          </button>
+        </div>
+
+        <p class="mono px-1 mb-3" style="font-size:0.62rem; color:var(--ink-soft);">Elegí el tipo en el selector y tocá "Agregar mueble" · para cambiar el tipo de uno ya puesto, seleccionalo, Eliminar y agregalo de nuevo con el tipo deseado</p>
+
+        <div class="flex flex-wrap gap-x-4 gap-y-1.5 mb-4 px-1" id="legend"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          <div class="glass rounded-3xl p-4 flex flex-col">
+            <div class="flex items-baseline justify-between mb-3 px-1">
+              <p class="mono panel-label">PLANO 2D</p>
+              <p class="mono" style="font-size:0.6rem; color:var(--ink-soft);">tocá para elegir · arrastrá el anillo para rotar</p>
+            </div>
+            <div class="rounded-2xl overflow-hidden" style="border:1px solid rgba(255,255,255,0.7); background:#fff;">
+              <canvas id="room2d" width="360" height="360" class="block w-full h-auto"></canvas>
+            </div>
+          </div>
+
+          <div class="glass rounded-3xl p-4 flex flex-col">
+            <div class="flex items-baseline justify-between mb-3 px-1">
+              <p class="mono panel-label">VISOR 3D</p>
+              <p class="mono" style="font-size:0.6rem; color:var(--ink-soft);">arrastrá para rotar · scroll para zoom</p>
+            </div>
+            <div id="three-container" class="rounded-2xl overflow-hidden" style="border:1px solid rgba(255,255,255,0.7); aspect-ratio:1/1; width:100%;"></div>
+          </div>
+
+          <div class="glass rounded-3xl p-4 flex flex-col">
+            <p class="mono panel-label mb-3 px-1">DATOS (JSON)</p>
+            <pre class="mono text-sm rounded-2xl p-4 overflow-auto flex-1" style="background:rgba(11,46,89,0.92); color:#8FD3FF; min-height:200px; border:1px solid rgba(255,255,255,0.4);"><code id="json-output">{}</code></pre>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-5 sm:px-8 pb-10">
+    <p class="mono text-xs" style="color:var(--ink-soft)">Modelador Espacial Rápido — demo funcional del núcleo de interacción 2D↔3D↔JSON, con muros, puerta, ventana y persistencia local</p>
+  </footer>
+
+  <div id="toast" class="pill rounded-full px-4 py-2 text-sm mono inline-flex items-center gap-2" style="color:var(--blue-900)"></div>
+
+<script>
+(function () {
+  // ---------- Config ----------
+  const CANVAS_SIZE = 360;
+  const ROOM_MARGIN = 24;
+  const roomBounds = { x0: ROOM_MARGIN, y0: ROOM_MARGIN, x1: CANVAS_SIZE - ROOM_MARGIN, y1: CANVAS_SIZE - ROOM_MARGIN };
+  const roomW = roomBounds.x1 - roomBounds.x0;
+  const roomH = roomBounds.y1 - roomBounds.y0;
+  const ROOM_3D_W = 6;
+  const ROOM_3D_D = 6;
+  const WALL_H = 2.6;
+  const WALL_THICK = 0.08;
+  const STORAGE_KEY = 'modelador-espacial-layout-v3';
+
+  const ICON_CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  const ICON_ALERT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+
+  const FURNITURE_TYPES = [
+    { key: 'sofa',    label: 'Sofá',    w: 92,  h: 40, height3D: 0.85, color: '#2B7CF6' },
+    { key: 'mesa',    label: 'Mesa',    w: 56,  h: 56, height3D: 0.75, color: '#12A594' },
+    { key: 'silla',   label: 'Silla',   w: 30,  h: 30, height3D: 0.9,  color: '#7C6FF0' },
+    { key: 'estante', label: 'Estante', w: 104, h: 22, height3D: 1.8,  color: '#E8A33D' },
+    { key: 'cama',    label: 'Cama',    w: 118, h: 78, height3D: 0.55, color: '#EF7C9C' },
+    { key: 'planta',  label: 'Planta',  w: 26,  h: 26, height3D: 1.1,  color: '#3FAE6B' },
+    { key: 'tv',      label: 'TV',      w: 70,  h: 18, height3D: 0.5,  color: '#5C6B7A' },
+  ];
+  function typeOf(key) { return FURNITURE_TYPES.find(t => t.key === key) || FURNITURE_TYPES[0]; }
+  function shadeHex(hex, amt) {
+    const v = hex.replace('#', ''); const num = parseInt(v, 16);
+    let r = (num >> 16) + amt, g = ((num >> 8) & 0xff) + amt, b = (num & 0xff) + amt;
+    r = Math.max(0, Math.min(255, r)); g = Math.max(0, Math.min(255, g)); b = Math.max(0, Math.min(255, b));
+    return (r << 16) | (g << 8) | b;
+  }
+
+  // ---------- State ----------
+  let furnitureList = [];
+  let selectedId = null;
+  let idCounter = 1;
+  let typeCycleIndex = 0;
+
+  // ---------- DOM refs ----------
+  const canvas = document.getElementById('room2d');
+  const ctx = canvas.getContext('2d');
+  const jsonOutput = document.getElementById('json-output');
+  const countLabel = document.getElementById('furniture-count');
+  const btnAdd = document.getElementById('btn-add');
+  const btnRotate = document.getElementById('btn-rotate');
+  const btnDelete = document.getElementById('btn-delete');
+  const btnReset = document.getElementById('btn-reset');
+  const btnSave = document.getElementById('btn-save');
+  const btnCopy = document.getElementById('btn-copy');
+  const toast = document.getElementById('toast');
+  const legend = document.getElementById('legend');
+  const typeSelect = document.getElementById('furniture-type-select');
+
+  typeSelect.innerHTML = FURNITURE_TYPES.map(t => '<option value="' + t.key + '">' + t.label + '</option>').join('');
+
+  legend.innerHTML = FURNITURE_TYPES.map(t =>
+    '<span class="inline-flex items-center gap-1.5 text-xs mono" style="color:var(--ink-soft)">' +
+    '<span class="legend-dot" style="background:' + t.color + '"></span>' + t.label + '</span>'
+  ).join('');
+
+  function showToast(msg, ok) {
+    toast.innerHTML = (ok === false ? ICON_ALERT : ICON_CHECK) + '<span>' + msg + '</span>';
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove('show'), 1700);
+  }
+
+  // ---------- Geometry helpers ----------
+  function clampCenter(item) {
+    const radius = Math.hypot(item.w, item.h) / 2;
+    item.cx = Math.max(roomBounds.x0 + radius * 0.4, Math.min(item.cx, roomBounds.x1 - radius * 0.4));
+    item.cy = Math.max(roomBounds.y0 + radius * 0.4, Math.min(item.cy, roomBounds.y1 - radius * 0.4));
+  }
+  function localPoint(item, px, py) {
+    const dx = px - item.cx, dy = py - item.cy;
+    const cos = Math.cos(-item.rotation), sin = Math.sin(-item.rotation);
+    return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+  }
+  function isInside(item, px, py) {
+    const p = localPoint(item, px, py);
+    return Math.abs(p.x) <= item.w / 2 && Math.abs(p.y) <= item.h / 2;
+  }
+  function handleWorldPos(item) {
+    const localX = 0, localY = -(item.h / 2) - 18;
+    const cos = Math.cos(item.rotation), sin = Math.sin(item.rotation);
+    return { x: item.cx + localX * cos - localY * sin, y: item.cy + localX * sin + localY * cos };
+  }
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+  function hexToRgba(hex, alpha) {
+    const v = hex.replace('#', '');
+    const r = parseInt(v.substring(0, 2), 16), g = parseInt(v.substring(2, 4), 16), b = parseInt(v.substring(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
+  // ---------- Furniture lifecycle ----------
+  function createFurniture(typeKey, cx, cy) {
+    const t = typeOf(typeKey);
+    return { id: 'f' + (idCounter++), type: t.key, label: t.label, color: t.color, height3D: t.height3D, w: t.w, h: t.h, cx, cy, rotation: 0, mesh: null };
+  }
+  function addFurniture() {
+    const t = typeOf(typeSelect.value);
+    const n = furnitureList.length;
+    const cx = CANVAS_SIZE / 2 + ((n % 3) - 1) * 46;
+    const cy = CANVAS_SIZE / 2 + (Math.floor(n / 3) % 2 === 0 ? -1 : 1) * (30 + (n % 3) * 6);
+    const item = createFurniture(t.key, cx, cy);
+    clampCenter(item);
+    furnitureList.push(item);
+    create3DMeshFor(item);
+    selectedId = item.id;
+    afterChange();
+  }
+  function deleteSelected() {
+    if (!selectedId) return;
+    const idx = furnitureList.findIndex(f => f.id === selectedId);
+    if (idx === -1) return;
+    const item = furnitureList[idx];
+    if (item.mesh) scene.remove(item.mesh);
+    furnitureList.splice(idx, 1);
+    selectedId = null;
+    afterChange();
+  }
+  function rotateSelected(deltaDeg) {
+    const item = furnitureList.find(f => f.id === selectedId);
+    if (!item) return;
+    item.rotation += (deltaDeg * Math.PI) / 180;
+    afterChange();
+  }
+  function resetLayout() {
+    furnitureList.forEach(f => { if (f.mesh) scene.remove(f.mesh); });
+    furnitureList = [];
+    idCounter = 1;
+    typeSelect.value = 'sofa';
+    const initial = createFurniture('sofa', CANVAS_SIZE / 2, CANVAS_SIZE / 2);
+    furnitureList.push(initial);
+    create3DMeshFor(initial);
+    selectedId = initial.id;
+    afterChange();
+  }
+  function serializeLayout() {
+    return furnitureList.map(f => ({ id: f.id, type: f.type, cx: f.cx, cy: f.cy, rotation: f.rotation }));
+  }
+  function saveLayout() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeLayout())); showToast('Guardado', true); }
+    catch (e) { showToast('No se pudo guardar', false); }
+  }
+  function loadLayout() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data) || data.length === 0) return false;
+      furnitureList = data.map(d => {
+        const t = typeOf(d.type);
+        const item = { id: d.id, type: t.key, label: t.label, color: t.color, height3D: t.height3D, w: t.w, h: t.h, cx: d.cx, cy: d.cy, rotation: d.rotation || 0, mesh: null };
+        create3DMeshFor(item);
+        return item;
+      });
+      idCounter = furnitureList.reduce((max, f) => Math.max(max, parseInt(f.id.slice(1), 10) || 0), 0) + 1;
+      selectedId = furnitureList[0].id;
+      return true;
+    } catch (e) { return false; }
+  }
+  function copyJson() {
+    const text = jsonOutput.textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => showToast('JSON copiado', true)).catch(() => showToast('No se pudo copiar', false));
+    } else { showToast('No se pudo copiar', false); }
+  }
+
+  // ---------- 2D drawing ----------
+  function drawScene() {
+    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.strokeStyle = '#EAF3FF';
+    ctx.lineWidth = 1;
+    for (let gx = roomBounds.x0; gx <= roomBounds.x1; gx += 24) { ctx.beginPath(); ctx.moveTo(gx, roomBounds.y0); ctx.lineTo(gx, roomBounds.y1); ctx.stroke(); }
+    for (let gy = roomBounds.y0; gy <= roomBounds.y1; gy += 24) { ctx.beginPath(); ctx.moveTo(roomBounds.x0, gy); ctx.lineTo(roomBounds.x1, gy); ctx.stroke(); }
+
+    ctx.strokeStyle = '#2B7CF6';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(roomBounds.x0, roomBounds.y0, roomW, roomH);
+    ctx.fillStyle = '#4E6076';
+    ctx.font = '10px monospace';
+    ctx.fillText('AMBIENTE', roomBounds.x0 + 6, roomBounds.y0 - 8);
+
+    furnitureList.forEach(item => {
+      const isSel = item.id === selectedId;
+      ctx.save();
+      ctx.translate(item.cx, item.cy);
+      ctx.rotate(item.rotation);
+      ctx.fillStyle = hexToRgba(item.color, isSel ? 0.28 : 0.16);
+      ctx.strokeStyle = isSel ? '#C9791A' : item.color;
+      ctx.lineWidth = isSel ? 2.5 : 2;
+      roundRect(ctx, -item.w / 2, -item.h / 2, item.w, item.h, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      if (item.type === 'sofa' || item.type === 'silla' || item.type === 'cama') {
+        ctx.beginPath();
+        ctx.moveTo(-item.w / 2 + 4, -item.h / 2 + 3);
+        ctx.lineTo(item.w / 2 - 4, -item.h / 2 + 3);
+        ctx.strokeStyle = hexToRgba(item.color, 0.9);
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#0B2E59';
+      ctx.font = '600 9px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(item.label, 0, 3);
+      ctx.textAlign = 'start';
+      ctx.restore();
+
+      if (isSel) {
+        const hp = handleWorldPos(item);
+        ctx.beginPath(); ctx.moveTo(item.cx, item.cy); ctx.lineTo(hp.x, hp.y);
+        ctx.strokeStyle = 'rgba(201, 121, 26, 0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(hp.x, hp.y, 8, 0, Math.PI * 2);
+        ctx.fillStyle = '#C9791A'; ctx.fill();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+      }
+    });
+
+    if (furnitureList.length === 0) {
+      ctx.fillStyle = '#9AAEC2';
+      ctx.font = '600 12px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Agregá un mueble para comenzar', CANVAS_SIZE / 2, CANVAS_SIZE / 2);
+      ctx.textAlign = 'start';
+    }
+  }
+
+  // ---------- 2D pointer interaction ----------
+  let mode = null;
+  let dragOffset = { x: 0, y: 0 };
+  function getCanvasPos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CANVAS_SIZE / rect.width, scaleY = CANVAS_SIZE / rect.height;
+    const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+    const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }
+  function topmostHit(px, py) {
+    for (let i = furnitureList.length - 1; i >= 0; i--) if (isInside(furnitureList[i], px, py)) return furnitureList[i];
+    return null;
+  }
+  function pointerDown(evt) {
+    const pos = getCanvasPos(evt);
+    const selectedItem = furnitureList.find(f => f.id === selectedId);
+    if (selectedItem) {
+      const hp = handleWorldPos(selectedItem);
+      if (Math.hypot(pos.x - hp.x, pos.y - hp.y) <= 12) { mode = 'rotate'; evt.preventDefault(); return; }
+    }
+    const hit = topmostHit(pos.x, pos.y);
+    if (hit) {
+      selectedId = hit.id; mode = 'move'; dragOffset = { x: pos.x - hit.cx, y: pos.y - hit.cy };
+      updateToolbarState(); drawScene();
+    } else {
+      selectedId = null; mode = null; updateToolbarState(); drawScene();
+    }
+    evt.preventDefault();
+  }
+  function pointerMove(evt) {
+    if (!mode) return;
+    const pos = getCanvasPos(evt);
+    const item = furnitureList.find(f => f.id === selectedId);
+    if (!item) return;
+    if (mode === 'move') { item.cx = pos.x - dragOffset.x; item.cy = pos.y - dragOffset.y; clampCenter(item); }
+    else if (mode === 'rotate') { const dx = pos.x - item.cx, dy = pos.y - item.cy; item.rotation = Math.atan2(dx, -dy); }
+    drawScene(); syncAll(); evt.preventDefault();
+  }
+  function pointerUp() { mode = null; }
+  canvas.addEventListener('mousedown', pointerDown);
+  window.addEventListener('mousemove', pointerMove);
+  window.addEventListener('mouseup', pointerUp);
+  canvas.addEventListener('touchstart', pointerDown, { passive: false });
+  window.addEventListener('touchmove', pointerMove, { passive: false });
+  window.addEventListener('touchend', pointerUp);
+
+  // ---------- Three.js scene ----------
+  const container = document.getElementById('three-container');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf7fbff);
+  scene.fog = new THREE.Fog(0xf7fbff, 9, 18);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  const orbitTarget = new THREE.Vector3(0, 0.6, 0);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
+
+  const orbit = { theta: Math.PI / 4, phi: 1.0, radius: 9 };
+  const ORBIT_MIN_RADIUS = 4, ORBIT_MAX_RADIUS = 16, ORBIT_MIN_PHI = 0.25, ORBIT_MAX_PHI = Math.PI / 2 - 0.05;
+  function updateCameraFromOrbit() {
+    const sinPhi = Math.sin(orbit.phi);
+    camera.position.set(
+      orbitTarget.x + orbit.radius * sinPhi * Math.sin(orbit.theta),
+      orbitTarget.y + orbit.radius * Math.cos(orbit.phi),
+      orbitTarget.z + orbit.radius * sinPhi * Math.cos(orbit.theta)
+    );
+    camera.lookAt(orbitTarget);
+  }
+  updateCameraFromOrbit();
+
+  let orbiting = false, lastPointer = { x: 0, y: 0 }, pinchStartDist = null, pinchStartRadius = orbit.radius;
+  function getEventPointer(evt) { if (evt.touches && evt.touches.length) return { x: evt.touches[0].clientX, y: evt.touches[0].clientY }; return { x: evt.clientX, y: evt.clientY }; }
+  function touchDistance(evt) { const [a, b] = evt.touches; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+  function orbitPointerDown(evt) {
+    if (evt.touches && evt.touches.length === 2) { pinchStartDist = touchDistance(evt); pinchStartRadius = orbit.radius; return; }
+    orbiting = true; lastPointer = getEventPointer(evt); container.classList.add('orbiting'); evt.preventDefault();
+  }
+  function orbitPointerMove(evt) {
+    if (evt.touches && evt.touches.length === 2) {
+      const dist = touchDistance(evt);
+      if (pinchStartDist) { const scale = pinchStartDist / dist; orbit.radius = Math.min(ORBIT_MAX_RADIUS, Math.max(ORBIT_MIN_RADIUS, pinchStartRadius * scale)); updateCameraFromOrbit(); }
+      evt.preventDefault(); return;
+    }
+    if (!orbiting) return;
+    const pointer = getEventPointer(evt);
+    const dx = pointer.x - lastPointer.x, dy = pointer.y - lastPointer.y;
+    lastPointer = pointer;
+    orbit.theta -= dx * 0.007;
+    orbit.phi = Math.min(ORBIT_MAX_PHI, Math.max(ORBIT_MIN_PHI, orbit.phi - dy * 0.007));
+    updateCameraFromOrbit(); evt.preventDefault();
+  }
+  function orbitPointerUp() { orbiting = false; pinchStartDist = null; container.classList.remove('orbiting'); }
+  function orbitWheel(evt) { orbit.radius = Math.min(ORBIT_MAX_RADIUS, Math.max(ORBIT_MIN_RADIUS, orbit.radius + evt.deltaY * 0.01)); updateCameraFromOrbit(); evt.preventDefault(); }
+  container.addEventListener('mousedown', orbitPointerDown);
+  window.addEventListener('mousemove', orbitPointerMove);
+  window.addEventListener('mouseup', orbitPointerUp);
+  container.addEventListener('touchstart', orbitPointerDown, { passive: false });
+  window.addEventListener('touchmove', orbitPointerMove, { passive: false });
+  window.addEventListener('touchend', orbitPointerUp);
+  container.addEventListener('wheel', orbitWheel, { passive: false });
+
+  function resizeRenderer() {
+    const size = container.clientWidth || 300;
+    renderer.setSize(size, size, false);
+    camera.aspect = 1; camera.updateProjectionMatrix();
+  }
+  resizeRenderer();
+  window.addEventListener('resize', resizeRenderer);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.95);
+  dirLight.position.set(4.5, 7, 3.5);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.set(1024, 1024);
+  dirLight.shadow.camera.left = -4.5; dirLight.shadow.camera.right = 4.5;
+  dirLight.shadow.camera.top = 4.5; dirLight.shadow.camera.bottom = -4.5;
+  dirLight.shadow.camera.near = 1; dirLight.shadow.camera.far = 16;
+  dirLight.shadow.bias = -0.0015;
+  scene.add(dirLight);
+  const fillLight = new THREE.DirectionalLight(0xbfe0ff, 0.35);
+  fillLight.position.set(-4, 3, -4);
+  scene.add(fillLight);
+
+  // Piso realista tono madera clara
+  const floorGeo = new THREE.PlaneGeometry(ROOM_3D_W, ROOM_3D_D);
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0xEFE1C6, roughness: 0.88, metalness: 0.02 });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const plankMat = new THREE.LineBasicMaterial({ color: 0xD9C7A0, transparent: true, opacity: 0.6 });
+  const plankPts = [];
+  for (let i = -ROOM_3D_W / 2; i <= ROOM_3D_W / 2; i += 0.5) {
+    plankPts.push(new THREE.Vector3(i, 0.001, -ROOM_3D_D / 2), new THREE.Vector3(i, 0.001, ROOM_3D_D / 2));
+  }
+  scene.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(plankPts), plankMat));
+
+  const roomEdgesGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(ROOM_3D_W, 0.01, ROOM_3D_D));
+  scene.add(new THREE.LineSegments(roomEdgesGeo, new THREE.LineBasicMaterial({ color: 0x2b7cf6 })));
+
+  // ---------- Muros con apertura real (puerta / ventana) ----------
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xbcdcff, transparent: true, opacity: 0.24, roughness: 0.6, side: THREE.DoubleSide, depthWrite: false });
+  const wallEdgeMat = new THREE.LineBasicMaterial({ color: 0x2b7cf6, transparent: true, opacity: 0.5 });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
+
+  function buildWallGeometry(w, h, thickness, opening) {
+    const shape = new THREE.Shape();
+    shape.moveTo(-w / 2, 0);
+    shape.lineTo(w / 2, 0);
+    shape.lineTo(w / 2, h);
+    shape.lineTo(-w / 2, h);
+    shape.lineTo(-w / 2, 0);
+    if (opening) {
+      const hx0 = opening.offsetX - opening.width / 2, hx1 = opening.offsetX + opening.width / 2;
+      const hy0 = opening.sill, hy1 = opening.sill + opening.height;
+      const hole = new THREE.Path();
+      hole.moveTo(hx0, hy0);
+      hole.lineTo(hx0, hy1);
+      hole.lineTo(hx1, hy1);
+      hole.lineTo(hx1, hy0);
+      hole.lineTo(hx0, hy0);
+      shape.holes.push(hole);
+    }
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+    geo.translate(0, 0, -thickness / 2);
+    return geo;
+  }
+
+  function addDoorLeaf(group, opening) {
+    const leafW = opening.width * 0.92, leafH = opening.height * 0.96, leafThick = 0.045;
+    const hingeX = opening.offsetX - opening.width / 2 + 0.02;
+    const doorGroup = new THREE.Group();
+    doorGroup.position.set(hingeX, opening.sill, 0);
+    doorGroup.rotation.y = THREE.MathUtils.degToRad(34);
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x8B5E3C, roughness: 0.55 });
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(leafW, leafH, leafThick), leafMat);
+    leaf.position.set(leafW / 2, leafH / 2, 0);
+    leaf.castShadow = true; leaf.receiveShadow = true;
+    doorGroup.add(leaf);
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0xC9A227, metalness: 0.6, roughness: 0.3 });
+    const handle = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), handleMat);
+    handle.position.set(leafW * 0.88, leafH * 0.5, leafThick * 1.4);
+    doorGroup.add(handle);
+    group.add(doorGroup);
+
+    const ft = 0.05;
+    const jamb1 = new THREE.Mesh(new THREE.BoxGeometry(ft, opening.height, ft * 1.5), frameMat);
+    jamb1.position.set(opening.offsetX - opening.width / 2 - ft / 2, opening.sill + opening.height / 2, 0);
+    const jamb2 = jamb1.clone(); jamb2.position.x = opening.offsetX + opening.width / 2 + ft / 2;
+    const header = new THREE.Mesh(new THREE.BoxGeometry(opening.width + ft * 2, ft, ft * 1.5), frameMat);
+    header.position.set(opening.offsetX, opening.sill + opening.height + ft / 2, 0);
+    [jamb1, jamb2, header].forEach(m => { m.castShadow = true; group.add(m); });
+  }
+
+  function addWindowPane(group, opening) {
+    const paneMat = new THREE.MeshStandardMaterial({ color: 0xBFE3FF, transparent: true, opacity: 0.5, roughness: 0.12, metalness: 0.1 });
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(opening.width * 0.96, opening.height * 0.96), paneMat);
+    pane.position.set(opening.offsetX, opening.sill + opening.height / 2, 0);
+    group.add(pane);
+
+    const mullionMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+    const vM = new THREE.Mesh(new THREE.BoxGeometry(0.03, opening.height, 0.03), mullionMat);
+    vM.position.set(opening.offsetX, opening.sill + opening.height / 2, 0);
+    group.add(vM);
+    const hM = new THREE.Mesh(new THREE.BoxGeometry(opening.width, 0.03, 0.03), mullionMat);
+    hM.position.set(opening.offsetX, opening.sill + opening.height / 2, 0);
+    group.add(hM);
+
+    const ft = 0.05;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(opening.width + ft * 2, ft, ft * 1.5), frameMat);
+    top.position.set(opening.offsetX, opening.sill + opening.height + ft / 2, 0);
+    const bottom = top.clone(); bottom.position.y = opening.sill - ft / 2;
+    const left = new THREE.Mesh(new THREE.BoxGeometry(ft, opening.height, ft * 1.5), frameMat);
+    left.position.set(opening.offsetX - opening.width / 2 - ft / 2, opening.sill + opening.height / 2, 0);
+    const right = left.clone(); right.position.x = opening.offsetX + opening.width / 2 + ft / 2;
+    [top, bottom, left, right].forEach(m => { m.castShadow = true; group.add(m); });
+  }
+
+  function addWall(w, h, x, z, rotY, opening) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    group.rotation.y = rotY;
+    const geo = buildWallGeometry(w, h, WALL_THICK, opening);
+    const wallMesh = new THREE.Mesh(geo, wallMat);
+    wallMesh.castShadow = true; wallMesh.receiveShadow = true;
+    group.add(wallMesh);
+    group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), wallEdgeMat));
+    if (opening && opening.type === 'door') addDoorLeaf(group, opening);
+    else if (opening && opening.type === 'window') addWindowPane(group, opening);
+    scene.add(group);
+  }
+
+  addWall(ROOM_3D_W, WALL_H, 0, -ROOM_3D_D / 2, 0, { type: 'window', offsetX: 0, width: 1.5, height: WALL_H * 0.42, sill: WALL_H * 0.42 });
+  addWall(ROOM_3D_D, WALL_H, -ROOM_3D_W / 2, 0, Math.PI / 2, null);
+  addWall(ROOM_3D_D, WALL_H, ROOM_3D_W / 2, 0, Math.PI / 2, { type: 'door', offsetX: 0.4, width: 0.95, height: WALL_H * 0.8, sill: 0 });
+  addWall(ROOM_3D_W, WALL_H, 0, ROOM_3D_D / 2, 0, null);
+
+  function map2DTo3D(cx, cy) {
+    const nx = (cx - roomBounds.x0) / roomW, ny = (cy - roomBounds.y0) / roomH;
+    return { x: (nx - 0.5) * ROOM_3D_W, z: (ny - 0.5) * ROOM_3D_D };
+  }
+
+  // ---------- Muebles compuestos ----------
+  function buildFurnitureMesh(item) {
+    const w = (item.w / roomW) * ROOM_3D_W;
+    const d = (item.h / roomH) * ROOM_3D_D;
+    const totalH = item.height3D;
+    const group = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(item.color), roughness: 0.55, metalness: 0.04 });
+    const matDark = new THREE.MeshStandardMaterial({ color: new THREE.Color(shadeHex(item.color, -35)), roughness: 0.5, metalness: 0.08 });
+
+    function box(bw, bh, bd, material) { const m = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), material); m.castShadow = true; m.receiveShadow = true; return m; }
+    function cyl(r1, r2, h, material) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, 10), material); m.castShadow = true; m.receiveShadow = true; return m; }
+
+    if (item.type === 'sofa') {
+      const seatH = totalH * 0.48;
+      const seat = box(w, seatH, d, mat); seat.position.y = seatH / 2; group.add(seat);
+      const backH = totalH * 0.58;
+      const back = box(w, backH, d * 0.16, mat); back.position.set(0, seatH + backH / 2 * 0.55, -d / 2 + d * 0.08); group.add(back);
+      const armH = totalH * 0.7, armW = Math.max(w * 0.1, 0.08);
+      [-1, 1].forEach(s => { const arm = box(armW, armH, d, mat); arm.position.set(s * (w / 2 - armW / 2), armH / 2, 0); group.add(arm); });
+    } else if (item.type === 'mesa') {
+      const topH = totalH * 0.1;
+      const top = box(w, topH, d, mat); top.position.y = totalH - topH / 2; group.add(top);
+      const legR = Math.min(w, d) * 0.045, legH = totalH - topH;
+      const ox = w / 2 - legR * 1.8, oz = d / 2 - legR * 1.8;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => { const leg = cyl(legR, legR, legH, matDark); leg.position.set(sx * ox, legH / 2, sz * oz); group.add(leg); });
+    } else if (item.type === 'silla') {
+      const seatH = totalH * 0.46;
+      const seat = box(w, totalH * 0.1, d, mat); seat.position.y = seatH; group.add(seat);
+      const backH = totalH * 0.54;
+      const back = box(w, backH, d * 0.12, mat); back.position.set(0, seatH + backH / 2, -d / 2 + d * 0.06); group.add(back);
+      const legR = Math.min(w, d) * 0.07;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => { const leg = cyl(legR, legR * 0.8, seatH, matDark); leg.position.set(sx * (w / 2 - legR * 1.5), seatH / 2, sz * (d / 2 - legR * 1.5)); group.add(leg); });
+    } else if (item.type === 'cama') {
+      const mattressH = totalH * 0.5;
+      const mattress = box(w, mattressH, d, mat); mattress.position.y = mattressH / 2; group.add(mattress);
+      const headboardH = totalH * 1.7;
+      const headboard = box(w, headboardH, d * 0.08, matDark); headboard.position.set(0, headboardH / 2, -d / 2 + d * 0.04); group.add(headboard);
+      const pillow = box(w * 0.32, mattressH * 0.5, d * 0.28, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 }));
+      pillow.position.set(0, mattressH + mattressH * 0.25, -d / 2 + d * 0.22); group.add(pillow);
+    } else if (item.type === 'planta') {
+      const potH = totalH * 0.3;
+      const pot = cyl(w * 0.32, w * 0.42, potH, new THREE.MeshStandardMaterial({ color: 0xB5651D, roughness: 0.75 }));
+      pot.position.y = potH / 2; group.add(pot);
+      const foliage = new THREE.Mesh(new THREE.IcosahedronGeometry(w * 0.5, 0), mat);
+      foliage.position.y = potH + w * 0.42;
+      foliage.castShadow = true; foliage.receiveShadow = true;
+      group.add(foliage);
+    } else if (item.type === 'tv') {
+      const consoleH = totalH * 0.5;
+      const consoleBox = box(w, consoleH, d, matDark); consoleBox.position.y = consoleH / 2; group.add(consoleBox);
+      const screen = box(w * 0.92, totalH * 1.7, d * 0.12, new THREE.MeshStandardMaterial({ color: 0x1a2330, roughness: 0.3, metalness: 0.2 }));
+      screen.position.set(0, consoleH + totalH * 0.85, -d / 2 + d * 0.06); group.add(screen);
+    } else {
+      const frame = box(w, totalH, d * 0.9, mat); frame.position.y = totalH / 2; group.add(frame);
+      for (let i = 1; i <= 2; i++) { const shelf = box(w * 0.96, 0.03, d * 0.86, matDark); shelf.position.y = totalH * (i / 3); group.add(shelf); }
+    }
+    return group;
+  }
+
+  function create3DMeshFor(item) {
+    const group = buildFurnitureMesh(item);
+    scene.add(group);
+    item.mesh = group;
+  }
+  function updateMeshTransform(item) {
+    const pos = map2DTo3D(item.cx, item.cy);
+    item.mesh.position.x = pos.x;
+    item.mesh.position.z = pos.z;
+    item.mesh.rotation.y = -item.rotation;
+    const isSel = item.id === selectedId;
+    item.mesh.traverse(child => {
+      if (child.isMesh) { child.material.emissive = new THREE.Color(isSel ? 0x1d5fbf : 0x000000); child.material.emissiveIntensity = isSel ? 0.22 : 0; }
+    });
+  }
+
+  function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); }
+  animate();
+
+  // ---------- Sync + UI state ----------
+  function syncAll() {
+    furnitureList.forEach(updateMeshTransform);
+    if (furnitureList.length === 0) {
+      jsonOutput.textContent = '// sin muebles — usá "Agregar mueble"';
+    } else {
+      const data = {
+        muebles: furnitureList.map(f => {
+          const pos3D = map2DTo3D(f.cx, f.cy);
+          return { id: f.id, tipo: f.type, x: Number(pos3D.x.toFixed(3)), z: Number(pos3D.z.toFixed(3)), rotacion_grados: Math.round((f.rotation * 180) / Math.PI) };
+        })
+      };
+      jsonOutput.textContent = JSON.stringify(data, null, 2);
+    }
+    countLabel.textContent = furnitureList.length + (furnitureList.length === 1 ? ' mueble' : ' muebles');
+  }
+  function updateToolbarState() {
+    const hasSelection = !!selectedId;
+    btnRotate.disabled = !hasSelection;
+    btnDelete.disabled = !hasSelection;
+  }
+  function afterChange() { drawScene(); syncAll(); updateToolbarState(); }
+
+  btnAdd.addEventListener('click', addFurniture);
+  btnRotate.addEventListener('click', () => rotateSelected(15));
+  btnDelete.addEventListener('click', deleteSelected);
+  btnReset.addEventListener('click', resetLayout);
+  btnSave.addEventListener('click', saveLayout);
+  btnCopy.addEventListener('click', copyJson);
+
+  // ---------- Foto → propuesta de plano (revisión sobre el mismo editor) ----------
+  const ANALYZE_URL = '/api/analyze-room';
+  const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const PHOTO_MAX = 8 * 1024 * 1024;
+  const ph = {}; ['input','pick','preview','name','remove','analyze','width','status','review','warnings','use','cancel'].forEach(k => ph[k] = document.getElementById('photo-' + k));
+  let photoFile = null, photoUrl = null, photoState = 'none', stash = null;
+
+  function setPhoto(state, msg, warns) {
+    photoState = state;
+    const has = !!photoFile, busy = state === 'analyzing' || state === 'applying', rev = state === 'review';
+    ph.preview.hidden = !has;
+    ph.name.textContent = has ? photoFile.name : 'Sin imagen';
+    ph.pick.textContent = has ? 'Reemplazar foto' : 'Elegir foto';
+    ph.remove.disabled = !has || busy || rev;
+    ph.analyze.disabled = !has || busy || rev;
+    ph.input.disabled = ph.width.disabled = busy || rev;
+    ph.analyze.textContent = state === 'analyzing' ? 'Analizando…' : 'Analizar foto';
+    ph.review.hidden = !rev;
+    ph.status.textContent = msg || (has ? 'Imagen lista para analizar.' : 'Sin imagen. Elegí una foto JPG, PNG o WebP (máx. 8 MB).');
+    ph.status.style.color = state === 'error' ? '#B42318' : 'var(--ink-soft)';
+    ph.warnings.innerHTML = '';
+    (warns || []).forEach(w => { const li = document.createElement('li'); li.textContent = w; ph.warnings.appendChild(li); });
+    btnSave.disabled = rev; btnReset.disabled = rev; // en revisión no se toca el layout guardado
+  }
+
+  ph.input.addEventListener('change', () => {
+    const f = ph.input.files[0]; ph.input.value = '';
+    if (!f) return;
+    if (!PHOTO_TYPES.includes(f.type)) return setPhoto(photoState === 'none' ? 'none' : 'selected', 'Formato no admitido: usá JPG, PNG o WebP.');
+    if (f.size > PHOTO_MAX) return setPhoto(photoState === 'none' ? 'none' : 'selected', 'La imagen supera los 8 MB.');
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    photoFile = f; photoUrl = URL.createObjectURL(f); ph.preview.src = photoUrl;
+    setPhoto('selected');
+  });
+  ph.remove.addEventListener('click', () => {
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    photoFile = photoUrl = null; ph.preview.removeAttribute('src'); setPhoto('none');
+  });
+
+  function parseProposal(d) {
+    const savedId = idCounter;
+    const bad = () => { throw new Error('La respuesta del servicio no tiene el formato esperado.'); };
+    const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) && v >= lo && v <= hi) ? v : bad();
+    try {
+      if (!d || !Array.isArray(d.furniture) || !Array.isArray(d.warnings) || !d.calibration || typeof d.calibration.status !== 'string') bad();
+      const known = FURNITURE_TYPES.map(t => t.key);
+      const items = d.furniture.map(f => {
+        if (!f || !known.includes(f.type)) bad();
+        const it = createFurniture(f.type, roomBounds.x0 + num(f.x, 0, 1) * roomW, roomBounds.y0 + num(f.y, 0, 1) * roomH);
+        it.w = Math.max(10, num(f.width, 0.02, 1) * roomW);
+        it.h = Math.max(10, num(f.depth, 0.02, 1) * roomH);
+        it.rotation = num(f.rotation_deg, -360, 360) * Math.PI / 180;
+        it.confidence = num(f.confidence, 0, 1);
+        clampCenter(it);
+        return it;
+      });
+      return { items, warnings: d.warnings.filter(w => typeof w === 'string'), calibration: d.calibration };
+    } finally { idCounter = savedId; }
+  }
+
+  function enterReview(p) {
+    stash = { list: furnitureList, sel: selectedId, id: idCounter };
+    stash.list.forEach(f => { if (f.mesh) f.mesh.visible = false; });
+    furnitureList = p.items; idCounter = 1;
+    furnitureList.forEach(it => { it.id = 'f' + (idCounter++); create3DMeshFor(it); });
+    selectedId = null; afterChange();
+    const w = ['Distribución y medidas estimadas a partir de una sola foto: no son mediciones exactas.'];
+    w.push(p.calibration.status === 'user_provided'
+      ? 'Escala calibrada con tu medida (' + p.calibration.width_m + ' m de ancho); sigue siendo aproximada.'
+      : 'Sin calibrar: las proporciones son relativas al ambiente, sin medidas reales.');
+    if (!p.items.length) w.push('No se detectaron muebles de los tipos que admite el editor.');
+    const low = p.items.filter(i => i.confidence < 0.5).length;
+    if (low) w.push(low + ' mueble(s) con baja confianza: revisalos.');
+    setPhoto('review', 'Revisá la propuesta: podés mover, rotar, agregar o eliminar muebles.', w.concat(p.warnings));
+  }
+
+  function leaveReview(apply) {
+    if (!stash) return;
+    (apply ? stash.list : furnitureList).forEach(f => { if (f.mesh) scene.remove(f.mesh); });
+    if (apply) selectedId = furnitureList.length ? furnitureList[0].id : null;
+    else { furnitureList = stash.list; furnitureList.forEach(f => { if (f.mesh) f.mesh.visible = true; }); selectedId = stash.sel; idCounter = stash.id; }
+    stash = null; afterChange();
+    setPhoto('selected', apply ? 'Plano aplicado. Usá "Guardar" para conservarlo.' : 'Propuesta descartada. Tu plano anterior sigue intacto.');
+  }
+
+  async function analyzePhoto() {
+    if (!photoFile || photoState === 'analyzing') return;
+    let widthM = null; const raw = ph.width.value.trim();
+    if (raw) { widthM = Number(raw.replace(',', '.')); if (!(widthM > 0 && widthM <= 100)) return setPhoto('error', 'La medida conocida debe ser un número entre 0 y 100 metros.'); }
+    setPhoto('analyzing', 'Analizando la foto… puede tardar unos segundos.');
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 60000);
+    try {
+      const fd = new FormData(); fd.append('image', photoFile); if (widthM) fd.append('known_width_m', String(widthM));
+      let res;
+      try { res = await fetch(ANALYZE_URL, { method: 'POST', body: fd, signal: ctl.signal }); }
+      catch (e) { throw new Error(e.name === 'AbortError' ? 'El análisis tardó demasiado.' : 'No se pudo contactar al servicio de análisis (¿backend activo y en el mismo origen?).'); }
+      let data = null; try { data = await res.json(); } catch (e) {}
+      if (!res.ok) throw new Error((data && data.error && data.error.message) || 'El servicio respondió con error ' + res.status + '.');
+      enterReview(parseProposal(data));
+    } catch (e) { setPhoto('error', e.message + ' Tu plano actual no se modificó.'); }
+    finally { clearTimeout(timer); }
+  }
+  ph.analyze.addEventListener('click', analyzePhoto);
+  ph.use.addEventListener('click', () => { setPhoto('applying', 'Aplicando…'); leaveReview(true); });
+  ph.cancel.addEventListener('click', () => leaveReview(false));
+  setPhoto('none');
+
+  const restored = loadLayout();
+  if (!restored) {
+    const initial = createFurniture('sofa', CANVAS_SIZE / 2, CANVAS_SIZE / 2);
+    furnitureList.push(initial);
+    create3DMeshFor(initial);
+    selectedId = initial.id;
+  }
+  afterChange();
+})();
+</script>
+</body>
+</html>
