@@ -1,6 +1,14 @@
+<<<<<<< HEAD
 fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9
 httpx>=0.27
 pydantic>=2
+=======
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+httpx>=0.27
+pydantic>=2
+>>>>>>> 718d31a2a94a0e4bc7c0a2070706df2b3a09ac24
 pytest>=8
